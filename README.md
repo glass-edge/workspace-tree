@@ -1,2 +1,2 @@
-# workspace-tree
-Public repository tree for glass edge workspace project.
+# Glass Edge Workspace Repository
+Public repository data tree for [Glass Edge Workspace](https://glassedgesoftware.com/) project.

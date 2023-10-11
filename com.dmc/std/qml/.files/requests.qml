@@ -1,13 +1,25 @@
 property var input: null
+property var store: []
 signal command(var data)
 
 readonly property real _rem: API.Theme.rem
 
-function run(url, parameters) {
-    for (const param in parameters) {
-        url = url.replace(new RegExp(`{${param}}`, 'g'), parameters[param])
+function init() {
+    for (let i = 0; i < itemRepeater.count; i++) {
+        itemRepeater.itemAt(i).init()
     }
-    root.command({ run: { url: encodeURI(url) } })
+}
+
+function run(verb, url, body, parameters) {
+    let bodyText = body != null ? JSON.stringify(body) : undefined
+    for (const param in parameters) {
+        const re = new RegExp(`{${param}}`, 'g')
+        url = url.replace(re, parameters[param])
+        if (bodyText != null) {
+            bodyText = bodyText.replace(re, parameters[param])
+        }
+    }
+    root.command({ run: { verb, url: encodeURI(url), body: bodyText } })
 }
 
 API.ScrollView {
@@ -27,20 +39,36 @@ API.ScrollView {
             id: mainColumn
             width: scrollView.width - (height < scrollView.height ? 0 : _rem * 0.5)
             Repeater {
+                id: itemRepeater
                 model: JSON.parse(input)
                 delegate: Item {
                     id: itemRoot
                     Layout.fillWidth: true
-                    implicitHeight: column.implicitHeight + _rem
+                    implicitHeight: column.implicitHeight + (modelData.parameters ? _rem : 0)
 
-                    property var parameters: {
+                    property string verb: modelData.verb ?? 'GET'
+                    property string url: modelData.url
+                    property var body: modelData.body
+                    property var parameters: {}
+
+                    function init() {
                         const res = {}
                         if (modelData.parameters != null) {
                             for (let param of modelData.parameters) {
-                                res[param.id] = ''
+                                const val = root.store != null && root.store[index] != null
+                                    ? root.store[index][param.id] : null
+                                res[param.id] = val ?? ''
                             }
                         }
-                        return res
+                        parameters = res
+                    }
+
+                    function setParam(paramId, text) {
+                        parameters[paramId] = text
+                        if (root.store == null)
+                            root.store = []
+                        root.store[index] = parameters
+                        root.store = root.store
                     }
 
                     Rectangle {
@@ -62,7 +90,18 @@ API.ScrollView {
                             spacing: _rem
                             API.Button {
                                 text: modelData.name
-                                onClicked: root.run(modelData.url, itemRoot.parameters)
+                                onClicked: {
+                                    root.run(
+                                        itemRoot.verb,
+                                        itemRoot.url,
+                                        itemRoot.body,
+                                        itemRoot.parameters
+                                    )
+                                }
+                            }
+                            API.Text {
+                                text: itemRoot.verb
+                                font.bold: true
                             }
                             API.Text {
                                 Layout.fillWidth: true
@@ -74,6 +113,7 @@ API.ScrollView {
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
+                            Layout.leftMargin: _rem * 0.5
                             Repeater {
                                 model: modelData.parameters
                                 delegate: RowLayout {
@@ -83,7 +123,10 @@ API.ScrollView {
                                     }
                                     API.TextInput {
                                         Layout.fillWidth: true
-                                        onEditingFinished: itemRoot.parameters[modelData.id] = text
+                                        text: itemRoot.parameters ? itemRoot.parameters[modelData.id] : ''
+                                        onEditingFinished: {
+                                            itemRoot.setParam(modelData.id, text)
+                                        }
                                     }
                                 }
                             }

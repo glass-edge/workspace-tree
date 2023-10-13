@@ -1,5 +1,5 @@
 property var input: null
-signal activated(var command)
+signal command(var data)
 
 property var selectedJob: null
 property var selectedBuild: null
@@ -71,7 +71,7 @@ function getStages (actions) {
 
 function openLink (url) {
     console.log('opening', url)
-    activated({ openLink: url })
+    command({ openLink: url })
 }
 
 Rectangle {

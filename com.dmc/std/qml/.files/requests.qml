@@ -22,7 +22,7 @@ readonly property var _filteredItems: {
         res = res
             .filter((_, index) =>
                 !_filterPin
-                || _filterPin && store[index].state?.pinned === true
+                || _filterPin && store[index] != null && store[index].state?.pinned === true
             )
             .filter(v =>
                 v.name.toLowerCase().includes(part)

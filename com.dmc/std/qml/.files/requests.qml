@@ -1,5 +1,5 @@
 property var input: null
-property var store: []
+property var store: { items: [] }
 signal command(var data)
 
 readonly property real _rem: API.Theme.rem
@@ -22,11 +22,14 @@ readonly property var _filteredItems: {
         res = res
             .filter((_, index) =>
                 !_filterPin
-                || _filterPin && store[index] != null && store[index].state?.pinned === true
+                || _filterPin
+                    && store?.items != null
+                    && store.items[index] != null
+                    && store.items[index].state?.pinned === true
             )
             .filter(v =>
                 v.name.toLowerCase().includes(part)
-                || v.url.toLowerCase().includes(part)
+                || v.url != null && v.url.toLowerCase().includes(part)
             )
     }
     return res
@@ -36,10 +39,18 @@ property bool _filterPin: false
 
 function init() {
     if (typeof store == 'string') {
-        store = JSON.parse(store)
+        try {
+            store = JSON.parse(store)
+        } catch (e) {
+            store = null
+        }
     }
     for (let i = 0; i < itemRepeater.count; i++) {
         itemRepeater.itemAtIndex(i).init()
+    }
+    if (store?.state != null) {
+        _filterPin = (store.state.pinned === true)
+        searchText.text = store.state.search ?? ''
     }
 }
 
@@ -76,6 +87,17 @@ function run(verb, url, body, headers, parameters) {
     })
 }
 
+function pushStoreRoot() {
+    if (root.store == null) {
+        root.store = {}
+    }
+    root.store.state = {
+        search: searchText.text,
+        pinned: _filterPin
+    }
+    root.store = root.store
+}
+
 Rectangle {
     anchors.fill: parent
     color: 'white'
@@ -99,13 +121,17 @@ RowLayout {
             anchors.fill: parent
             anchors.margins: -_rem * 0.25
             cursorShape: Qt.PointingHandCursor
-            onClicked: _filterPin = !_filterPin
+            onClicked: {
+                _filterPin = !_filterPin
+                pushStoreRoot()
+            }
         }
     }
     API.TextInput {
         id: searchText
         Layout.fillWidth: true
         icon: API.Theme.symbolSearch
+        onTextChanged: pushStoreRoot()
     }
 }
 
@@ -146,7 +172,7 @@ API.ScrollView {
 
             function init() {
                 const res = {}
-                const storeItem = root.store ? root.store[itemIndex] : null
+                const storeItem = root.store?.items != null ? root.store.items[itemIndex] : null
                 if (modelData.parameters != null) {
                     for (let param of modelData.parameters) {
                         const val = storeItem != null && storeItem.parameters != null
@@ -161,8 +187,6 @@ API.ScrollView {
 
             function setParam(paramId, text) {
                 parameters[paramId] = text
-                if (root.store == null)
-                    root.store = []
                 pushStore()
             }
 
@@ -189,7 +213,9 @@ API.ScrollView {
             }
 
             function pushStore() {
-                root.store[itemIndex] = {
+                if (root.store == null)
+                    root.store = { items: [] }
+                root.store.items[itemIndex] = {
                     parameters,
                     instances: instances.length > 0 ? instances : undefined,
                     state: { pinned }

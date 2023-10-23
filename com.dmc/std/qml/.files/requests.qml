@@ -1,3 +1,17 @@
+/**
+input: {
+    name: string
+    verb: string
+    url: string
+    body?: any
+    headers?: Record<string, string>
+    parameters?: {
+        id: string
+        type?: 'multiline' | 'line' // default line
+        scope?: 'global' | 'item' | 'instance' // default instance, global not supported
+    }[]
+}
+*/
 property var input: null
 property var store: { items: [] }
 signal command(var data)
@@ -46,7 +60,7 @@ function init() {
         }
     }
     for (let i = 0; i < itemRepeater.count; i++) {
-        itemRepeater.itemAtIndex(i).init()
+        itemRepeater.itemAtIndex(i)?.init()
     }
     if (store?.state != null) {
         _filterPin = (store.state.pinned === true)
@@ -133,6 +147,8 @@ RowLayout {
         icon: API.Theme.symbolSearch
         onTextChanged: pushStoreRoot()
     }
+
+
 }
 
 API.ScrollView {
@@ -149,7 +165,7 @@ API.ScrollView {
     ListView {
         id: itemRepeater
         reuseItems: true
-        width: scrollView.width - (height < scrollView.height ? 0 : _rem * 0.5)
+        width: scrollView.width - (contentHeight < scrollView.height ? 0 : _rem * 0.5)
         spacing: _rem * 0.5
         model: root._filteredItems
         delegate: Item {
@@ -163,6 +179,23 @@ API.ScrollView {
             readonly property var body: modelData.body
             readonly property var headers: modelData.headers
             readonly property int itemIndex: modelData.index
+            readonly property var paramConfig: {
+                if (modelData.parameters == null) {
+                    return []
+                }
+                const res = modelData.parameters.slice()
+                res.sort((a, b) => {
+                    if (a.scope !== b.scope) {
+                        if (a.scope === 'item')
+                            return -1
+                        if (b.scope === 'item')
+                            return 1
+                    }
+                    return a.id.localeCompare(b.id)
+                })
+                return res
+            }
+
             property var parameters: {}
             property var instances: []
             property bool pinned: false
@@ -173,16 +206,14 @@ API.ScrollView {
             function init() {
                 const res = {}
                 const storeItem = root.store?.items != null ? root.store.items[itemIndex] : null
-                if (modelData.parameters != null) {
-                    for (let param of modelData.parameters) {
-                        const val = storeItem != null && storeItem.parameters != null
-                            ? storeItem.parameters[param.id] : null
-                        res[param.id] = val ?? ''
-                    }
+                for (const param of paramConfig) {
+                    const val = storeItem != null && storeItem.parameters != null
+                        ? storeItem.parameters[param.id] : null
+                    res[param.id] = val ?? ''
                 }
                 parameters = res
                 instances = storeItem?.instances ?? []
-                pinned = storeItem?.state?.pinned === true
+                pinned = (storeItem?.state?.pinned === true)
             }
 
             function setParam(paramId, text) {
@@ -191,7 +222,14 @@ API.ScrollView {
             }
 
             function addInstance() {
-                instances.push(Object.assign({}, parameters))
+                const values = {}
+                Object.keys(parameters).forEach(k => {
+                    const config = paramConfig.find(v => v.id === k)
+                    if (config.scope == null || config.scope === 'instance') {
+                        values[k] = parameters[k]
+                    }
+                })
+                instances.push(values)
                 instances = instances
                 pushStore()
             }
@@ -221,6 +259,17 @@ API.ScrollView {
                     state: { pinned }
                 }
                 root.store = root.store
+            }
+
+            function collectInstanceParameters(instanceParameters) {
+                const values = Object.assign({}, instanceParameters)
+                Object.keys(parameters).forEach(k => {
+                    const config = paramConfig.find(v => v.id === k)
+                    if (config.scope === 'item') {
+                        values[k] = parameters[k]
+                    }
+                })
+                return values
             }
 
             Rectangle {
@@ -275,8 +324,8 @@ API.ScrollView {
                         borderWidth: 0.5
                         borderColor: API.Theme.alpha(color, 2)
                         borderRadius: _rem * 0.25
-                        color: root._palette[text].text
-                        backgroundColor: root._palette[text].background
+                        color: root._palette[text]?.text ?? 'black'
+                        backgroundColor: root._palette[text]?.background ?? 'white'
                     }
                     API.Text {
                         Layout.fillWidth: true
@@ -299,16 +348,17 @@ API.ScrollView {
                     visible: parametersRepeater.count > 0
                     Repeater {
                         id: parametersRepeater
-                        model: modelData.parameters
+                        model: paramConfig
                         delegate: RowLayout {
                             Layout.fillWidth: true
                             API.Text {
                                 text: modelData.id
+                                color: modelData.scope === 'item' ? '#00a' : 'black'
                             }
                             API.TextInput {
                                 visible: modelData.type == null
                                 Layout.fillWidth: true
-                                text: itemRoot.parameters ? itemRoot.parameters[modelData.id] : ''
+                                text: itemRoot.parameters ? (itemRoot.parameters[modelData.id] ?? '') : ''
                                 onEditingFinished: {
                                     itemRoot.setParam(modelData.id, text)
                                 }
@@ -318,7 +368,7 @@ API.ScrollView {
                                 visible: modelData.type === 'multiline'
                                 Layout.fillWidth: true
                                 implicitHeight: _rem * 10
-                                value: itemRoot.parameters ? itemRoot.parameters[modelData.id] : ''
+                                value: itemRoot.parameters ? (itemRoot.parameters[modelData.id] ?? '') : ''
                                 onTextEdited: function(text) {
                                     itemRoot.setParam(modelData.id, text)
                                 }
@@ -351,7 +401,7 @@ API.ScrollView {
                                         itemRoot.url,
                                         itemRoot.body,
                                         itemRoot.headers,
-                                        modelData
+                                        itemRoot.collectInstanceParameters(modelData)
                                     )
                                 }
                             }
@@ -380,6 +430,7 @@ API.ScrollView {
                                 font.pixelSize: API.Theme.fontSizeSmall
                                 onEditingFinished: {
                                     itemRoot.setInstanceComment(index, text)
+                                    modelData._comment = text
                                 }
                             }
                             API.Button {
